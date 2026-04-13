@@ -44,16 +44,21 @@ if sys.platform == "win32":
 # 설정
 # ============================================================
 def _load_config() -> dict:
-    """config.json 에서 민감 정보 로드 (exe 옆 또는 소스 옆)."""
-    candidates = []
+    """config.json 로드: 번들 내장 기본값 → exe 옆 파일로 덮어쓰기."""
+    cfg = {}
+    # 1) 번들 내장 config (PyInstaller _MEIPASS 안)
     if hasattr(sys, "_MEIPASS"):
-        candidates.append(Path(sys.executable).parent / "config.json")
-    candidates.append(Path(__file__).parent / "config.json")
-    for p in candidates:
-        if p.exists():
-            with open(p, encoding="utf-8") as f:
-                return json.load(f)
-    return {}
+        bundled = Path(sys._MEIPASS) / "config.json"
+        if bundled.exists():
+            with open(bundled, encoding="utf-8") as f:
+                cfg = json.load(f)
+    # 2) exe 옆 또는 소스 옆 config (있으면 덮어쓰기)
+    external = Path(sys.executable).parent / "config.json" if hasattr(sys, "_MEIPASS") \
+        else Path(__file__).parent / "config.json"
+    if external.exists():
+        with open(external, encoding="utf-8") as f:
+            cfg.update(json.load(f))
+    return cfg
 
 _CFG = _load_config()
 LINK_ID = _CFG.get("LINK_ID", "")
