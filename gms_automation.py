@@ -220,7 +220,7 @@ class GMSBot:
         page = self._page
 
         biznum = _normalize_biznum(_g(invoice, "invoicerCorpNum", "supplierCorpNum"))
-        issue_date = _fmt_date(_g(invoice, "issueDate", "writeDate"))
+        issue_date = _fmt_date(_g(invoice, "writeDate", "issueDate"))
         supply = _g(invoice, "supplyCostTotal", default=0)
         tax = _g(invoice, "taxTotal", default=0)
         item_name = _g(invoice, "itemName", "itemName1")

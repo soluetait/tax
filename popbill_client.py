@@ -70,7 +70,7 @@ INVOICE_TYPE = "BUY"  # BUY=매입, SELL=매출
 
 CACHE_TTL_MIN = 60
 
-APP_VERSION = "1.2.0"
+APP_VERSION = "1.3.0"
 GITHUB_REPO = "soluetait/Tax"
 
 
@@ -719,7 +719,7 @@ def fetch_invoices(
         try:
             job_id = svc.requestJob(
                 CorpNum=CORP_NUM, Type=INVOICE_TYPE,
-                DType="I",  # I = 발행일자, W = 작성일자
+                DType="W",  # I = 발행일자, W = 작성일자
                 SDate=sdate, EDate=edate, UserID=USER_ID,
             )
             break
