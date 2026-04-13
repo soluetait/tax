@@ -1,0 +1,6 @@
+{
+    "LINK_ID": "YOUR_LINK_ID",
+    "SECRET_KEY": "YOUR_SECRET_KEY",
+    "CORP_NUM": "0000000000",
+    "IS_TEST": true
+}

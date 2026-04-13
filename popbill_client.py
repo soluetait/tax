@@ -43,12 +43,24 @@ if sys.platform == "win32":
 # ============================================================
 # 설정
 # ============================================================
-LINK_ID = "DASANSOLUETA"
-SECRET_KEY = "YRj4uHZ/I29K8pCeXnmqw5ADZ1/nLRT4OlrNczSJPaI="
+def _load_config() -> dict:
+    """config.json 에서 민감 정보 로드 (exe 옆 또는 소스 옆)."""
+    candidates = []
+    if hasattr(sys, "_MEIPASS"):
+        candidates.append(Path(sys.executable).parent / "config.json")
+    candidates.append(Path(__file__).parent / "config.json")
+    for p in candidates:
+        if p.exists():
+            with open(p, encoding="utf-8") as f:
+                return json.load(f)
+    return {}
 
-CORP_NUM = "1238189952"
-USER_ID = None
-IS_TEST = True
+_CFG = _load_config()
+LINK_ID = _CFG.get("LINK_ID", "")
+SECRET_KEY = _CFG.get("SECRET_KEY", "")
+CORP_NUM = _CFG.get("CORP_NUM", "")
+USER_ID = _CFG.get("USER_ID") or None
+IS_TEST = _CFG.get("IS_TEST", True)
 INVOICE_TYPE = "BUY"  # BUY=매입, SELL=매출
 
 CACHE_TTL_MIN = 60
