@@ -70,7 +70,7 @@ INVOICE_TYPE = "BUY"  # BUY=매입, SELL=매출
 
 CACHE_TTL_MIN = 60
 
-APP_VERSION = "1.3.0"
+APP_VERSION = "1.4.0"
 GITHUB_REPO = "soluetait/Tax"
 
 
@@ -880,8 +880,12 @@ class PopbillApp(tk.Tk):
         self.focused_nts: str = ""            # 마지막 클릭된 행의 NTS
         self._busy = False
         self._settings = load_settings()
+        self._authenticated = False           # MS 로그인 여부
+        self._auth_user: dict = {}            # 로그인된 사용자 정보
 
         self._build_ui()
+        # 앱 시작 후 MS 로그인 요구
+        self.after(300, self._require_ms_login)
 
     # ---------- UI 구성 ----------
     def _build_ui(self) -> None:
@@ -914,8 +918,15 @@ class PopbillApp(tk.Tk):
         self.search_btn = tk.Button(top, text="조회", width=10,
                                     bg="#2f80ed", fg="white",
                                     font=("맑은 고딕", 10, "bold"),
-                                    command=self.on_search)
+                                    command=self.on_search,
+                                    state="disabled")
         self.search_btn.grid(row=0, column=7, padx=(20, 4))
+
+        self.login_btn = tk.Button(top, text="로그인", width=10,
+                                   bg="#d97706", fg="white",
+                                   font=("맑은 고딕", 10, "bold"),
+                                   command=self._require_ms_login)
+        self.login_btn.grid(row=0, column=8, padx=4)
 
         # 필터 영역
         flt = tk.LabelFrame(self, text="필터", padx=10, pady=6,
@@ -1146,7 +1157,8 @@ class PopbillApp(tk.Tk):
 
     def _set_busy(self, busy: bool) -> None:
         self._busy = busy
-        self.search_btn.config(state="disabled" if busy else "normal")
+        can_search = not busy and self._authenticated
+        self.search_btn.config(state="normal" if can_search else "disabled")
         self.save_btn.config(
             state="disabled" if busy or not self.items else "normal"
         )
@@ -1156,6 +1168,59 @@ class PopbillApp(tk.Tk):
         self.excel_btn.config(
             state="disabled" if busy or not self.items else "normal"
         )
+
+    # ---------- MS 로그인 ----------
+    def _require_ms_login(self) -> None:
+        if self._authenticated:
+            return
+        if self._busy:
+            return
+        self._busy = True
+        self.set_status("MS 로그인 중... 브라우저에서 로그인하세요.")
+        self.login_btn.config(state="disabled")
+        threading.Thread(target=self._ms_login_thread, daemon=True).start()
+
+    def _ms_login_thread(self) -> None:
+        import traceback
+        try:
+            from gms_automation import ms_authenticate
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            result = loop.run_until_complete(ms_authenticate(
+                log=lambda m: self.after(0, self.set_status, m),
+            ))
+            loop.close()
+            self.after(0, self._on_ms_login_done, result)
+        except Exception as e:
+            tb = traceback.format_exc()
+            print(tb)
+            self.after(0, self._on_ms_login_error, str(e))
+
+    def _on_ms_login_done(self, result: dict | None) -> None:
+        self._busy = False
+        if result:
+            self._authenticated = True
+            self._auth_user = result
+            name = result.get("name", "")
+            email = result.get("email", "")
+            display = name or email or "인증됨"
+            self.title(f"AI 세금계산서  v{APP_VERSION}  —  {display}")
+            self.set_status(f"로그인 완료: {display}")
+            self.search_btn.config(state="normal")
+            self.login_btn.config(text=f"{display}", state="disabled",
+                                  bg="#10B981")
+        else:
+            self.set_status("로그인 실패 — 로그인 버튼을 다시 눌러주세요.")
+            self.login_btn.config(state="normal")
+            messagebox.showwarning("로그인 필요",
+                                   "MS 로그인에 실패했습니다.\n"
+                                   "로그인 버튼을 다시 눌러주세요.")
+
+    def _on_ms_login_error(self, msg: str) -> None:
+        self._busy = False
+        self.set_status(f"로그인 오류: {msg}")
+        self.login_btn.config(state="normal")
+        messagebox.showerror("로그인 오류", msg)
 
     def on_vendor_mapping(self) -> None:
         # 포커스된 행(또는 체크된 첫 행) 에서 사업자번호/공급자명 가져오기
@@ -1453,6 +1518,9 @@ class PopbillApp(tk.Tk):
     # ---------- 조회 ----------
     def on_search(self) -> None:
         if self._busy:
+            return
+        if not self._authenticated:
+            messagebox.showwarning("로그인 필요", "MS 로그인 후 이용 가능합니다.")
             return
         try:
             sdate = self.start_var.get().replace("-", "").strip()

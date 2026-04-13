@@ -605,6 +605,143 @@ class GMSBot:
 
 
 # ============================================================
+# MS 로그인 인증 (앱 시작 시 사용)
+# ============================================================
+MS_LOGIN_URL = "https://login.microsoftonline.com/"
+
+async def ms_authenticate(
+    log: Callable[[str], None] = print,
+    timeout_sec: int = 300,
+) -> dict | None:
+    """
+    MS O365 로그인 후 사용자 정보 반환.
+    기존 세션이 있으면 자동 로그인, 없으면 브라우저 띄워서 수동 로그인.
+    return: {"email": "...", "name": "..."} or None (실패)
+    """
+    pw = await async_playwright().start()
+    try:
+        try:
+            browser = await pw.chromium.launch(headless=False, channel="msedge")
+        except Exception:
+            browser = await pw.chromium.launch(headless=False)
+
+        state = str(GMS_STATE_FILE) if GMS_STATE_FILE.exists() else None
+        context = await browser.new_context(
+            storage_state=state,
+            viewport={"width": 900, "height": 700},
+        )
+        page = await context.new_page()
+
+        # GMS 접속 → O365 로그인 유도
+        log("GMS 접속 중...")
+        await page.goto(GMS_URL, wait_until="domcontentloaded", timeout=60000)
+        await asyncio.sleep(2)
+
+        # 이미 로그인된 경우 (세션 유효)
+        cur_url = page.url
+        if "gms.dasannetworks.com" in cur_url and "login" not in cur_url.lower():
+            log("기존 세션으로 자동 로그인 성공")
+            user_info = await _extract_user_info(page, log)
+            await context.storage_state(path=str(GMS_STATE_FILE))
+            await browser.close()
+            return user_info
+
+        # 로그인 버튼 클릭
+        try:
+            btn = page.locator("text=/O365.*로그인/").first
+            if await btn.count() > 0 and await btn.is_visible():
+                log("O365 로그인 버튼 클릭")
+                await btn.click()
+        except Exception:
+            pass
+
+        # 사용자가 로그인할 때까지 대기
+        log("브라우저에서 O365 계정으로 로그인하세요...")
+        import time as _t
+        deadline = _t.time() + timeout_sec
+        while _t.time() < deadline:
+            await asyncio.sleep(2)
+            try:
+                url = page.url
+            except Exception:
+                continue
+            if ("gms.dasannetworks.com" in url
+                    and "login" not in url.lower()
+                    and "microsoft" not in url.lower()
+                    and "auth" not in url.lower()):
+                await asyncio.sleep(3)
+                break
+        else:
+            log("로그인 시간 초과")
+            await browser.close()
+            return None
+
+        log("로그인 성공!")
+        user_info = await _extract_user_info(page, log)
+        await context.storage_state(path=str(GMS_STATE_FILE))
+        await browser.close()
+        return user_info
+
+    except Exception as e:
+        log(f"인증 오류: {e}")
+        return None
+    finally:
+        try:
+            await pw.stop()
+        except Exception:
+            pass
+
+
+async def _extract_user_info(page: Page, log: Callable) -> dict:
+    """GMS 페이지에서 로그인된 사용자 정보 추출."""
+    user_info = {"email": "", "name": ""}
+    try:
+        # GMS 우측 상단 사용자 정보 영역 탐색
+        for sel in [
+            ".v-list-item__title", ".user-name", ".v-toolbar .v-btn__content",
+            "[class*='user']", "[class*='profile']", ".v-avatar + *",
+        ]:
+            el = page.locator(sel).first
+            if await el.count() > 0:
+                txt = (await el.inner_text()).strip()
+                if txt and len(txt) > 1:
+                    if "@" in txt:
+                        user_info["email"] = txt
+                    else:
+                        user_info["name"] = txt
+                    break
+
+        # Graph API 로 정확한 사용자 정보 (쿠키 활용)
+        try:
+            resp = await page.evaluate("""
+                async () => {
+                    try {
+                        const r = await fetch('https://graph.microsoft.com/v1.0/me',
+                            {credentials: 'include'});
+                        if (r.ok) return await r.json();
+                    } catch(e) {}
+                    return null;
+                }
+            """)
+            if resp:
+                user_info["email"] = resp.get("mail") or resp.get("userPrincipalName", "")
+                user_info["name"] = resp.get("displayName", "")
+        except Exception:
+            pass
+
+    except Exception as e:
+        log(f"사용자 정보 추출 실패: {e}")
+
+    if user_info["name"] or user_info["email"]:
+        log(f"사용자: {user_info['name']} ({user_info['email']})")
+    else:
+        user_info["name"] = "인증됨"
+        log("사용자 정보를 가져올 수 없지만 로그인은 성공")
+
+    return user_info
+
+
+# ============================================================
 # 엔트리 포인트 (외부 호출용)
 # ============================================================
 async def enter_vouchers(
