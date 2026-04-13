@@ -1,0 +1,10 @@
+__pycache__/
+build/
+dist/
+*.spec
+*.pfx
+*.pem
+cache/
+downloads/
+*.log
+.claude/
