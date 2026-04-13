@@ -433,7 +433,8 @@ class GMSBot:
 
         # TX = 영세율이면 "영세율", 그 외 "세금계산서" (필수 — 부가세 unlock)
         tax_type = _g(invoice, "taxType")
-        if tax_type == "Z":
+        is_zero_rate = tax_type in ("Z", "영세")
+        if is_zero_rate:
             await select_dropdown(6, "영세율")
         else:
             await select_dropdown(6, "세금계산서")
@@ -444,7 +445,7 @@ class GMSBot:
 
         # 부가세: 영세율이면 0 (입력 생략), 그 외에는 세액 입력
         tax_val = int(float(str(tax).replace(",", "") or 0))
-        if tax_type == "Z":
+        if is_zero_rate:
             pass  # 영세율은 부가세 없음
         elif tax_val != 0:
             await fill_number(9, tax_val)
