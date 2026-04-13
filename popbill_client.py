@@ -70,7 +70,7 @@ INVOICE_TYPE = "BUY"  # BUY=매입, SELL=매출
 
 CACHE_TTL_MIN = 60
 
-APP_VERSION = "1.1.0"
+APP_VERSION = "1.2.0"
 GITHUB_REPO = "soluetait/Tax"
 
 
